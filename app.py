@@ -5,10 +5,12 @@ Created on Sat Jan  9 22:09:10 2021
 @author: Mandar Sudhakar Ghadi
 """
 
-from flask import Flask, request, jsonify
+import json
+from flask import Flask, request, jsonify, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from config import POSTGRES_URI
+from flask_expects_json import expects_json
+from config import POSTGRES_URI, SIGNUP_SCHEMA
 
 APP = Flask('FleetStudio')
 
@@ -17,6 +19,13 @@ APP.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 DB = SQLAlchemy(APP)
 MIGRATE = Migrate(APP, DB)
 
+def custom_json(query_res):
+    res=[]
+    cols=[x['name'] for x in query_res.column_descriptions]
+    for row in query_res:
+        res.append({c: getattr(row,c) for c in cols})
+    print(res)
+    return res
 
 class USERDETAIL(DB.Model):
     __tablename__ = 'USER_DETAILS'
@@ -25,7 +34,7 @@ class USERDETAIL(DB.Model):
     name = DB.Column(DB.Text, nullable=False)
     passwd = DB.Column(DB.Text, nullable=False)
     email = DB.Column(DB.Text)
-    phone = DB.Column(DB.Numeric)
+    phone = DB.Column(DB.Text)
 
     def __init__(self, name, passwd, email, phone):
         self.name = name
@@ -37,6 +46,71 @@ class USERDETAIL(DB.Model):
 @APP.route('/')
 def hello():
     return jsonify({"status": 200, "result": "Hello World"})
+
+@APP.route('/login', methods=['POST'])
+def login():
+    try:
+        data = request.get_json()
+        username = data['username'].upper()
+        password = data['password']
+        user = USERDETAIL.query.filter_by(name=username, passwd=password).first()
+        print("user", user)
+        if user:
+            user_detail = {
+                "id":user.id,
+                "name": user.name,
+                "email": user.model,
+                "phone": user.phone
+                }
+            #return jsonify({"status": 200, "result":user_detail})
+            return redirect(url_for('profile_info', data=data))
+        else:
+            return jsonify({"status": 401, "result": "Incorrect Username or Password"})
+    except Exception as exception:
+        return jsonify({"status": 500, "result": exception})
+
+@APP.route('/profile_info', methods=['POST','GET'])
+def profile_info():
+    try:
+        data = request.args['data']
+        print(data)
+        username = data['username'].upper()
+        user = USERDETAIL.query.filter_by(name=username).first()
+        print("user", user)
+        '''
+        if current_user.is_authenticated:
+            resp = {"result": 200,
+                    "data": current_user.to_json()}
+        else:
+            resp = {"result": 401,
+                    "data": {"message": "user no login"}}
+        return jsonify(**resp)
+        '''
+        user_detail = custom_json(user)
+        return jsonify({"status": 200, "result":user_detail})
+    except Exception as exception:
+        return jsonify({"status": 500, "result": exception})
+    
+@APP.route('/signup', methods=['POST'])
+@expects_json(SIGNUP_SCHEMA)
+def signup():
+    try:
+        data = request.get_json()
+        print(data)
+        if data:
+            if data['email'].endswith('@fleetstudio.com'):
+                new_user = USERDETAIL(name=data['username'].upper(), passwd=data['password'], \
+                                    email=data['email'], phone=data['phone'])
+                DB.session.add(new_user)
+                DB.session.commit()
+                return jsonify({"status":200, "result": f"User {new_user.name} has been created successfully."})
+            else:
+                return jsonify({"status":200, "result": "Enter a Valid Email-ID"})
+        else:
+            return jsonify({"status":400, "result": "Error in JSON format"})
+    except Exception as exception:
+        return jsonify({"status": 500, "result": exception})
+
 
 if __name__ == '__main__':
     APP.run(debug=True)

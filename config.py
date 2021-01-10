@@ -6,3 +6,19 @@ Created on Sat Jan  9 22:09:10 2021
 """
 
 POSTGRES_URI = "postgresql://postgres:postgres@localhost:5432/FLEETSTUDIO"
+
+SIGNUP_SCHEMA = {
+        'type': 'object',
+        'properties': {
+            'username': {'type': 'string',
+                         "maxLength": 8},
+            'email': {'type': 'string'},
+            'password': {'type': 'string',
+                         "pattern": "^(?=.{6,})(?=.*[a-zA-Z])(?=.*[0-9])(?=.*[#_-]).*$",
+                         "maxLength": 6},
+            'phone': {'type': 'string',
+                      "minLength": 10,
+                      "maxLength": 10}
+        },
+        'required': ['email', 'password']
+        }
