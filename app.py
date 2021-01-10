@@ -5,7 +5,8 @@ Created on Sat Jan  9 22:09:10 2021
 @author: Mandar Sudhakar Ghadi
 """
 
-import json
+import os
+from datetime import timedelta
 from flask import Flask, request, jsonify, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -19,13 +20,6 @@ APP.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 DB = SQLAlchemy(APP)
 MIGRATE = Migrate(APP, DB)
 
-def custom_json(query_res):
-    res=[]
-    cols=[x['name'] for x in query_res.column_descriptions]
-    for row in query_res:
-        res.append({c: getattr(row,c) for c in cols})
-    print(res)
-    return res
 
 class USERDETAIL(DB.Model):
     __tablename__ = 'USER_DETAILS'
@@ -43,10 +37,6 @@ class USERDETAIL(DB.Model):
         self.phone = phone
 
 
-@APP.route('/')
-def hello():
-    return jsonify({"status": 200, "result": "Hello World"})
-
 @APP.route('/login', methods=['POST'])
 def login():
     try:
@@ -54,16 +44,11 @@ def login():
         username = data['username'].upper()
         password = data['password']
         user = USERDETAIL.query.filter_by(name=username, passwd=password).first()
-        print("user", user)
         if user:
-            user_detail = {
-                "id":user.id,
-                "name": user.name,
-                "email": user.model,
-                "phone": user.phone
-                }
-            #return jsonify({"status": 200, "result":user_detail})
-            return redirect(url_for('profile_info', data=data))
+            session["logged"] = True
+            session.permanent = True
+            APP.permanent_session_lifetime = timedelta(minutes=5)
+            return redirect(url_for('profile_info', username=username))
         else:
             return jsonify({"status": 401, "result": "Incorrect Username or Password"})
     except Exception as exception:
@@ -72,22 +57,17 @@ def login():
 @APP.route('/profile_info', methods=['POST','GET'])
 def profile_info():
     try:
-        data = request.args['data']
-        print(data)
-        username = data['username'].upper()
-        user = USERDETAIL.query.filter_by(name=username).first()
-        print("user", user)
-        '''
-        if current_user.is_authenticated:
-            resp = {"result": 200,
-                    "data": current_user.to_json()}
+        if session and session["logged"]:
+            username = request.args['username'].upper()
+            user = USERDETAIL.query.filter_by(name=username).first()
+            user_detail = {
+                    "name": user.name,
+                    "email": user.email,
+                    "phone": user.phone
+                    }
+            return jsonify({"status": 200, "result":user_detail})
         else:
-            resp = {"result": 401,
-                    "data": {"message": "user no login"}}
-        return jsonify(**resp)
-        '''
-        user_detail = custom_json(user)
-        return jsonify({"status": 200, "result":user_detail})
+            return jsonify({"status":200, "result":"Session Expired. Please Login...."})
     except Exception as exception:
         return jsonify({"status": 500, "result": exception})
     
@@ -96,14 +76,18 @@ def profile_info():
 def signup():
     try:
         data = request.get_json()
-        print(data)
         if data:
             if data['email'].endswith('@fleetstudio.com'):
-                new_user = USERDETAIL(name=data['username'].upper(), passwd=data['password'], \
-                                    email=data['email'], phone=data['phone'])
-                DB.session.add(new_user)
-                DB.session.commit()
-                return jsonify({"status":200, "result": f"User {new_user.name} has been created successfully."})
+                user_exists = USERDETAIL.query.filter_by(email=data['email'].lower()).first()
+                print(user_exists)
+                if not user_exists:
+                    new_user = USERDETAIL(name=data['username'].upper(), passwd=data['password'], \
+                                        email=data['email'].lower(), phone=data['phone'])
+                    DB.session.add(new_user)
+                    DB.session.commit()
+                    return jsonify({"status":201, "result": f"User {new_user.name} has been created successfully."})
+                else:
+                    return jsonify({"status":200, "result": f"User {user_exists.name} Already Exists. Please Login...."})
             else:
                 return jsonify({"status":200, "result": "Enter a Valid Email-ID"})
         else:
@@ -111,6 +95,18 @@ def signup():
     except Exception as exception:
         return jsonify({"status": 500, "result": exception})
 
+@APP.route("/logout")
+def logout():
+    try:
+        if session and session["logged"]:
+            #session.pop('logged', None)
+            session["logged"] = False
+            return jsonify({"status":200, "result":"User Logged Out Successfully"})
+        else:
+            return jsonify({"status":200, "result":"Session Expired. Please Login...."})
+    except Exception as exception:
+        return jsonify({"status": 500, "result": exception})
 
 if __name__ == '__main__':
-    APP.run(debug=True)
+    APP.secret_key = os.urandom(12)
+    APP.run()
