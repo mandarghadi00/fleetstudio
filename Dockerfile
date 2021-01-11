@@ -5,13 +5,9 @@ RUN apt-get update \
   && ln -s /usr/bin/python3 python \
   && python3.8 -m pip install --upgrade pip \
   && apt-get install -y git
-RUN mkdir /home/fleetstudioapp
-RUN cd /home/fleetstudioapp
-RUN git init
-RUN git clone https://github.com/mandarghadi00/fleetstudio.git
 RUN mkdir /app
 WORKDIR /app
-COPY fleetstudio /app
+COPY . /app
 RUN ls
 RUN python3.8 -m pip install -r requirements.txt
 EXPOSE 5000
