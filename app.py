@@ -8,34 +8,14 @@ Created on Sat Jan  9 22:09:10 2021
 import os
 from datetime import timedelta
 from flask import Flask, request, jsonify, session, redirect, url_for
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
 from flask_expects_json import expects_json
-from config import POSTGRES_URI, SIGNUP_SCHEMA
+from config import SIGNUP_SCHEMA
+from models import UserDetail
+from base import Session
 
 APP = Flask('FleetStudio')
 
-APP.config['SQLALCHEMY_DATABASE_URI'] = POSTGRES_URI
 APP.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-DB = SQLAlchemy(APP)
-MIGRATE = Migrate(APP, DB)
-
-
-class USERDETAIL(DB.Model):
-    __tablename__ = 'USER_DETAILS'
-
-    id = DB.Column(DB.Integer, primary_key=True)
-    name = DB.Column(DB.Text, nullable=False)
-    passwd = DB.Column(DB.Text, nullable=False)
-    email = DB.Column(DB.Text)
-    phone = DB.Column(DB.Text)
-
-    def __init__(self, name, passwd, email, phone):
-        self.name = name
-        self.passwd = passwd
-        self.email = email
-        self.phone = phone
-
 
 @APP.route('/login', methods=['POST'])
 def login():
@@ -43,7 +23,9 @@ def login():
         data = request.get_json()
         username = data['username'].upper()
         password = data['password']
-        user = USERDETAIL.query.filter_by(name=username, passwd=password).first()
+        sess = Session()
+        user = sess.query(UserDetail).filter_by(name=username, passwd=password).first()
+        sess.close()
         if user:
             session["logged"] = True
             session.permanent = True
@@ -59,7 +41,9 @@ def profile_info():
     try:
         if session and session["logged"]:
             username = request.args['username'].upper()
-            user = USERDETAIL.query.filter_by(name=username).first()
+            sess = Session()
+            user = sess.query(UserDetail).filter_by(name=username).first()
+            sess.close()
             user_detail = {
                     "name": user.name,
                     "email": user.email,
@@ -78,15 +62,19 @@ def signup():
         data = request.get_json()
         if data:
             if data['email'].endswith('@fleetstudio.com'):
-                user_exists = USERDETAIL.query.filter_by(email=data['email'].lower()).first()
-                print(user_exists)
+                sess = Session()
+                user_exists = sess.query(UserDetail).filter_by(email=data['email'].lower()).first()
                 if not user_exists:
-                    new_user = USERDETAIL(name=data['username'].upper(), passwd=data['password'], \
+                    sess = Session()
+                    new_user = UserDetail(name=data['username'].upper(), passwd=data['password'], \
                                         email=data['email'].lower(), phone=data['phone'])
-                    DB.session.add(new_user)
-                    DB.session.commit()
-                    return jsonify({"status":201, "result": f"User {new_user.name} has been created successfully."})
+                    sess.add(new_user)
+                    sess.commit()
+                    user_name = new_user.name
+                    sess.close()
+                    return jsonify({"status":201, "result": f"User {user_name} has been created successfully."})
                 else:
+                    sess.close()
                     return jsonify({"status":200, "result": f"User {user_exists.name} Already Exists. Please Login...."})
             else:
                 return jsonify({"status":200, "result": "Enter a Valid Email-ID"})
@@ -109,4 +97,4 @@ def logout():
 
 if __name__ == '__main__':
     APP.secret_key = os.urandom(12)
-    APP.run(host ='0.0.0.0', port = 5000, debug = True)
+    APP.run(host = '0.0.0.0', port = 5000, debug = True)
