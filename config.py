@@ -20,5 +20,8 @@ SIGNUP_SCHEMA = {
                       "minLength": 10,
                       "maxLength": 10}
         },
-        'required': ['email', 'password']
+        'required': ['username', 'password']
         }
+
+LOGIN_LST = ("username", "password")
+SIGNUP_LST = ("username", "password", "email", "phone")
